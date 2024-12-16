@@ -1,5 +1,9 @@
 import dns.resolver
 import csv
+from colorama import Fore, Style, init
+
+# Initialize colorama for colored output
+init(autoreset=True)
 
 # Author: 0xNehru
 
@@ -62,13 +66,33 @@ def resolve_subdomain(subdomain):
     except Exception as e:
         return f"Error: {str(e)}"
 
+# Function to check if the CNAME target resolves to an A/AAAA record
+def check_target_resolution(target):
+    try:
+        answers = dns.resolver.resolve(target, 'A')
+        return [rdata.address for rdata in answers]  # Return list of resolved IPs
+    except dns.resolver.NoAnswer:
+        return None
+    except dns.resolver.NXDOMAIN:
+        return None
+    except dns.resolver.Timeout:
+        return None
+    except Exception:
+        return None
+
 # Function to check for subdomain takeover
-def check_takeover(target):
-    if target == "NXDOMAIN" or target == "No CNAME record found":
+def check_takeover(subdomain, cname_target):
+    if cname_target == "NXDOMAIN" or cname_target == "No CNAME record found":
         return "Not Vulnerable"
+    
+    resolved_ips = check_target_resolution(cname_target)
+    if resolved_ips:
+        return "No takeover risk detected (CNAME resolved to IPs)"
+    
     for pattern in takeover_patterns:
-        if pattern in target:
-            return f"Potential Takeover: {pattern}"
+        if pattern in cname_target:
+            return f"{Fore.BLUE}Potential Takeover: {cname_target} (NXDOMAIN or unresolved){Style.RESET_ALL}"
+    
     return "No takeover risk detected"
 
 # Main function to process subdomains from file
@@ -80,27 +104,28 @@ def main(input_file, output_file):
 
         for subdomain in subdomains:
             print(f"Checking {subdomain}...")
-            target = resolve_subdomain(subdomain)
-            status = check_takeover(target)
+            cname_target = resolve_subdomain(subdomain)
+            status = check_takeover(subdomain, cname_target)
 
             results.append({
                 "subdomain": subdomain,
-                "target": target,
+                "cname_target": cname_target,
                 "status": status
             })
-            print(f"  CNAME: {target}")
+
+            print(f"  CNAME: {cname_target}")
             print(f"  Status: {status}\n")
 
         # Write results to CSV file
         with open(output_file, 'w', newline='') as csvfile:
-            fieldnames = ['Subdomain', 'Target', 'Status']
+            fieldnames = ['Subdomain', 'CNAME Target', 'Status']
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
             writer.writeheader()
             for result in results:
                 writer.writerow({
                     'Subdomain': result['subdomain'],
-                    'Target': result['target'],
+                    'CNAME Target': result['cname_target'],
                     'Status': result['status']
                 })
 

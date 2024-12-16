@@ -1,5 +1,6 @@
 import dns.resolver
 import csv
+import argparse
 from colorama import Fore, Style, init
 
 # Initialize colorama for colored output
@@ -137,6 +138,9 @@ def main(input_file, output_file):
         print(f"An error occurred: {str(e)}")
 
 if __name__ == "__main__":
-    input_file = "urls.txt"  # Replace with your input file name
-    output_file = "results.csv"  # Replace with your desired output file name
-    main(input_file, output_file)
+    parser = argparse.ArgumentParser(description="Subdomain Takeover Checker")
+    parser.add_argument("-l", "--list", required=True, help="Input file containing subdomains")
+    parser.add_argument("-o", "--output", default="results.csv", help="Output file for saving results (default: results.csv)")
+    args = parser.parse_args()
+
+    main(args.list, args.output)

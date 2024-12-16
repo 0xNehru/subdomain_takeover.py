@@ -34,7 +34,7 @@ pip install dnspython
 Prepare a text file (urls.txt) containing a list of subdomains to check.
 # Run the script:
 
-    python subdomain_takeover.py
+   python3 exploit.py -l url.txt
 
     View the results in results.csv.
 

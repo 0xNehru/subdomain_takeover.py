@@ -9,57 +9,24 @@ init(autoreset=True)
 # Author: 0xNehru
 
 # Known patterns for subdomain takeover vulnerabilities
-takeover_patterns = [
-    "s3.amazonaws.com",
-    "github.io",
-    "herokuapp.com",
-    "pantheon.io",
-    "unbouncepages.com",
-    "cloudfront.net",
-    "tictail.com",
-    "surge.sh",
-    "bitbucket.io",
-    "smugmug.com",
-    "wordpress.com",
-    "helpjuice.com",
-    "helpscoutdocs.com",
-    "amazonaws.com",
-    "acquia-sites.com",
-    "cargocollective.com",
-    "flywheelstaging.com",
-    "strikingly.com",
-    "zendesk.com",
-    "statuspage.io",
-    "simplebooklet.com",
-    "getresponse.com",
-    "kinsta.com",
-    "readme.io",
-    "brightcove.com",
-    "wufoo.com",
-    "hatena.ne.jp",
-    "activecampaign.com",
-    "thinkific.com",
-    "launchrock.com",
-    "canny.io",
-    "cargocollective.com",
-    "teamwork.com",
-    "tilda.cc",
-    "bigcartel.com",
-    "aftership.com",
-    "helpscout.net",
-    "webflow.io",
-    "ghost.io",
-    "helprace.com",
-]
+TAKEOVER_PATTERNS = {
+    "s3.amazonaws.com", "github.io", "herokuapp.com", "pantheon.io", "unbouncepages.com",
+    "cloudfront.net", "tictail.com", "surge.sh", "bitbucket.io", "smugmug.com", "wordpress.com",
+    "helpjuice.com", "helpscoutdocs.com", "amazonaws.com", "acquia-sites.com", "cargocollective.com",
+    "flywheelstaging.com", "strikingly.com", "zendesk.com", "statuspage.io", "simplebooklet.com",
+    "getresponse.com", "kinsta.com", "readme.io", "brightcove.com", "wufoo.com", "hatena.ne.jp",
+    "activecampaign.com", "thinkific.com", "launchrock.com", "canny.io", "teamwork.com", "tilda.cc",
+    "bigcartel.com", "aftership.com", "helpscout.net", "webflow.io", "ghost.io", "helprace.com"
+}
 
 # Function to resolve subdomain CNAME records
 def resolve_subdomain(subdomain):
+    """Resolves the CNAME record of a subdomain."""
     try:
         answers = dns.resolver.resolve(subdomain, 'CNAME')
-        for rdata in answers:
-            return str(rdata.target).rstrip(".")
+        return str(answers[0].target).rstrip(".")
     except dns.resolver.NoAnswer:
-        return "No CNAME record found"
+        return None
     except dns.resolver.NXDOMAIN:
         return "NXDOMAIN"
     except dns.resolver.Timeout:
@@ -69,78 +36,77 @@ def resolve_subdomain(subdomain):
 
 # Function to check if the CNAME target resolves to an A/AAAA record
 def check_target_resolution(target):
+    """Checks if a given CNAME target has an A/AAAA record."""
     try:
-        answers = dns.resolver.resolve(target, 'A')
-        return [rdata.address for rdata in answers]  # Return list of resolved IPs
-    except dns.resolver.NoAnswer:
-        return None
-    except dns.resolver.NXDOMAIN:
-        return None
-    except dns.resolver.Timeout:
-        return None
+        dns.resolver.resolve(target, 'A')
+        return True  # Resolved successfully
+    except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN, dns.resolver.Timeout):
+        return False
     except Exception:
-        return None
+        return False
 
-# Function to check for subdomain takeover
+# Function to check for subdomain takeover vulnerability
 def check_takeover(subdomain, cname_target):
-    if cname_target == "NXDOMAIN" or cname_target == "No CNAME record found":
-        return "Not Vulnerable"
-    
-    resolved_ips = check_target_resolution(cname_target)
-    if resolved_ips:
-        return "No takeover risk detected (CNAME resolved to IPs)"
-    
-    for pattern in takeover_patterns:
+    """Determines if the subdomain is vulnerable to takeover."""
+    if cname_target == "NXDOMAIN":
+        return f"{Fore.RED}NXDOMAIN{Style.RESET_ALL}"
+
+    if not cname_target:
+        return "No CNAME record found"
+
+    if check_target_resolution(cname_target):
+        return "No takeover risk detected (CNAME resolved to an IP)"
+
+    for pattern in TAKEOVER_PATTERNS:
         if pattern in cname_target:
-            return f"{Fore.BLUE}Potential Takeover: {cname_target} (NXDOMAIN or unresolved){Style.RESET_ALL}"
-    
+            return f"{Fore.BLUE}Potential Takeover: {cname_target} (Unresolved){Style.RESET_ALL}"
+
     return "No takeover risk detected"
 
-# Main function to process subdomains from file
+# Main function to process subdomains
 def main(input_file, output_file):
+    """Reads subdomains from file, checks takeover risks, and saves results."""
     results = []
     try:
         with open(input_file, 'r') as file:
-            subdomains = file.read().splitlines()
+            subdomains = [line.strip() for line in file if line.strip()]
 
         for subdomain in subdomains:
-            print(f"Checking {subdomain}...")
             cname_target = resolve_subdomain(subdomain)
             status = check_takeover(subdomain, cname_target)
 
+            # Display NXDOMAIN results in red, others without color
+            if cname_target == "NXDOMAIN":
+                print(f"{Fore.RED}Checking {subdomain}... {status}{Style.RESET_ALL}")
+            else:
+                print(f"Checking {subdomain}... {status}")
+
+            print(f"  CNAME: {cname_target or 'No CNAME'}\n")
+
             results.append({
                 "subdomain": subdomain,
-                "cname_target": cname_target,
+                "cname_target": cname_target or "No CNAME",
                 "status": status
             })
-
-            print(f"  CNAME: {cname_target}")
-            print(f"  Status: {status}\n")
 
         # Write results to CSV file
         with open(output_file, 'w', newline='') as csvfile:
             fieldnames = ['Subdomain', 'CNAME Target', 'Status']
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-
             writer.writeheader()
-            for result in results:
-                writer.writerow({
-                    'Subdomain': result['subdomain'],
-                    'CNAME Target': result['cname_target'],
-                    'Status': result['status']
-                })
+            writer.writerows(results)
 
-        print(f"Results saved to {output_file}")
+        print(f"{Fore.MAGENTA}Results saved to {output_file}{Style.RESET_ALL}")
 
     except FileNotFoundError:
-        print(f"Input file {input_file} not found.")
+        print(f"{Fore.RED}Error: Input file '{input_file}' not found.{Style.RESET_ALL}")
     except Exception as e:
-        print(f"An error occurred: {str(e)}")
+        print(f"{Fore.RED}An error occurred: {str(e)}{Style.RESET_ALL}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Subdomain Takeover Checker")
     parser.add_argument("-l", "--list", required=True, help="Input file containing subdomains")
-    parser.add_argument("-o", "--output", default="results.csv", help="Output file for saving results (default: results.csv)")
+    parser.add_argument("-o", "--output", default="results.csv", help="Output CSV file (default: results.csv)")
     args = parser.parse_args()
 
     main(args.list, args.output)
